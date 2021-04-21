@@ -50,7 +50,7 @@ def parseArgs():
                      radius that defines the width of each cluster.
     first_steps_to_ignore : int
                             number of first steps that will be filtered out.
-    percentage_threshold : float
+    percentage_threshold : int
                             percentile threshold (percentage).
     magnitude_to_filter : int
                             column of data at which percentage_threshold
@@ -123,10 +123,12 @@ def parseArgs():
                 column from which to retrieve data.
         """
 
-        if type(percentage) is float or type(percentage) is int:
-            if (percentage > 100.) or (percentage <= 0.):
+        if type(percentage) is int:
+            if (percentage > 100) or (percentage <= 0):
                 raise Exception('The percentage of filtering is out of'
                 + ' bounds (0, 100].')
+        elif type(percentage) is float:
+            percentage = round(percentage)
         else:
             raise Exception('The percentage type (',type(percentage),')'
             + ' must be float (0, 100].')
@@ -164,8 +166,8 @@ def parseArgs():
     optional.add_argument("-f", "--first_steps_to_ignore", metavar="INT",
                           type=int, help="Number of first steps that will " +
                           "be filtered out. Default is 1.", default=1)
-    optional.add_argument("-p", "--percentage_threshold", metavar="FLOAT",
-                          type=float, help="Percentile threshold " +
+    optional.add_argument("-p", "--percentage_threshold", metavar="INT",
+                          type=int, help="Percentile threshold " +
                           "to filter models out.", default=None)
     optional.add_argument("-m", "--magnitude_to_filter", metavar="INT",
                           type=int, help="Column of the report " +
@@ -451,7 +453,7 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
                   list of ordered atom energies.
     first_steps_to_ignore : int
                             number of first steps that will be filtered out.
-    percentage_threshold : float
+    percentage_threshold : int
                         filtering criterium: percentage of data to be considered
     magnitude_to_filter : int
                             column from which we want to filter data
@@ -481,7 +483,7 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
         ----------
         atom_energies : list
                       list of ordered atom energies.
-        percentage_threshold : float
+        percentage_threshold : int
                         filtering criterium: percentage of data to be considered
         magnitude_to_filter : int
                             column from which we want to filter data
@@ -505,7 +507,8 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
         if percentage_threshold is not None:
 
             number_config = len(atom_energies) 
-            num_percentile = trunc((percentage_threshold/100.)*number_config)
+            num_percentile = trunc((percentage_threshold/100)*number_config)
+            print(num_percentile)
             atom_ene_percentile = atom_energies[0:num_percentile]
             max_ene_percentile = atom_ene_percentile[-1]         
 
@@ -517,7 +520,7 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
             else: 
                 log.info('  - Filtering by sasaLig.',)
             log.info('    - Percentage of data considered:', \
-                '{:.1f}'.format(float(100.*num_percentile/number_config)),'%')
+                '{:.3f}'.format(float(100.*num_percentile/number_config)),'%')
             log.info('    - Percentage of filtered magnitude covered:', \
                 '{:.3f}'.format(100.*float(ene_percentage)),'%')
 
