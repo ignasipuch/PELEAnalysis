@@ -11,6 +11,7 @@ from sklearn import cluster
 from collections import defaultdict
 from copy import copy
 from pathlib import Path
+from math import trunc
 
 from PELETools import ControlFileParser
 from PELETools.Utils import Logger
@@ -49,6 +50,11 @@ def parseArgs():
                      radius that defines the width of each cluster.
     first_steps_to_ignore : int
                             number of first steps that will be filtered out.
+    percentage_threshold : float
+                            percentile threshold (percentage).
+    magnitude_to_filter : int
+                            column of data at which percentage_threshold
+                            is applied.
     centroids_output_path : string
                             path for the output PDB file containing the
                             centroids.
@@ -106,6 +112,29 @@ def parseArgs():
 
         return path
 
+    def check_filtering_flags(percentage,column):
+        """ It checks the whether the filtering flags are well written.
+
+        PARAMETERS
+        ----------
+        percentage : float
+               percentile threshold.
+        column : int
+                column from which to retrieve data.
+        """
+
+        if type(percentage) is float or type(percentage) is int:
+            if (percentage > 100.) or (percentage <= 0.):
+                raise Exception('The percentage of filtering is out of'
+                + ' bounds (0, 100].')
+        else:
+            raise Exception('The percentage type (',type(percentage),')'
+            + ' must be float (0, 100].')
+
+        if column not in [5, 6]:
+            raise Exception('The column must be either 5 or 6 (Binding Energy'
+            + ' or sasaLig respectively).')
+
     parser = ap.ArgumentParser()
     optional = parser._action_groups.pop()
     required = parser.add_argument_group('required arguments')
@@ -135,6 +164,13 @@ def parseArgs():
     optional.add_argument("-f", "--first_steps_to_ignore", metavar="INT",
                           type=int, help="Number of first steps that will " +
                           "be filtered out. Default is 1.", default=1)
+    optional.add_argument("-p", "--percentage_threshold", metavar="FLOAT",
+                          type=float, help="Percentile threshold " +
+                          "to filter models out.", default=None)
+    optional.add_argument("-m", "--magnitude_to_filter", metavar="INT",
+                          type=int, help="Column of the report " +
+                          "to filter models out, either 5 or 6 (Binding Energy" + 
+                          "or sasa respectively).", default=5)
     optional.add_argument("-R", "--cluster_radius", metavar="FLOAT",
                           type=float, default=2, help="Clusters width in " +
                           "angstroms. Default is 2.")
@@ -159,9 +195,13 @@ def parseArgs():
     parsed_ref_coords = parse_coords(args.ref_coords)
     centroids_output_path = check_output_path(args.centroids_output_path)
 
+    if args.percentage_threshold is not None:
+        check_filtering_flags(args.percentage_threshold,args.magnitude_to_filter)
+
     return args.control_file, args.number_of_processors, args.water_ids, \
-        parsed_ref_coords, args.first_steps_to_ignore, args.cluster_radius, \
-        centroids_output_path, args.normalize_densities, args.debug
+        parsed_ref_coords, args.first_steps_to_ignore, args.percentage_threshold,\
+        args.magnitude_to_filter, args.cluster_radius, centroids_output_path,\
+        args.normalize_densities, args.debug
 
 
 def parse_water_ids(water_ids):
@@ -259,8 +299,8 @@ def arguments_validation(control_file_path, number_of_processors, water_ids):
     return water_ids, number_of_processors
 
 
-def _parallel_atom_getter(water_simulation_ids, report):
-    """This function needs to be called by multiprocessing.Pool method
+def _parallel_atom_getter(water_simulation_ids, magnitude_to_filter, report):
+    """This function needs to be called by multiprocessing. Pool method
     and it will retrieve the data about the selected water molecules.
 
     PARAMETERS
@@ -282,15 +322,16 @@ def _parallel_atom_getter(water_simulation_ids, report):
     for i, water_id in enumerate(water_simulation_ids):
         n_steps = report.getMetric(2)
         atoms = report.trajectory.getAtoms(water_id)
-        for j, (step, atom) in enumerate(zip(n_steps, atoms)):
-            atom_coords[(i, j, step)] = atom.coords
+        energies = report.getMetric(magnitude_to_filter)
+        for j, (step, atom, energy) in enumerate(zip(n_steps, atoms, energies)):
+            atom_coords[(i, j, step, energy)] = atom.coords
 
     atom_data = ((report.path, report.name), atom_coords)
     return atom_data
 
 
 def obtain_water_data_from(control_file_path, number_of_processors,
-                           water_simulation_ids):
+                           water_simulation_ids, magnitude_to_filter):
     """It obtains data about the chosen water molecules from PELE simulations.
 
     PARAMETERS
@@ -341,37 +382,40 @@ def obtain_water_data_from(control_file_path, number_of_processors,
         atom_models = []
         atom_steps = []
         atom_coords = []
+        atom_energies = []
 
         for data in atom_data:
-            for (water_id, model, step), coords in data[1].items():
+            for (water_id, model, step, energy), coords in data[1].items():
                 atom_reports.append(data[0])
                 atom_ids.append(water_id)
                 atom_models.append(model)
                 atom_steps.append(step)
+                atom_energies.append(energy)
                 atom_coords.append(coords)
 
-        return atom_reports, atom_ids, atom_models, atom_coords, atom_steps
+        return atom_reports, atom_ids, atom_models, atom_coords, atom_steps, atom_energies
 
     log = Logger()
-    log.info('   - Parsing control file...')
+    log.info('  - Parsing control file...')
     builder = ControlFileParser.ControlFileBuilder(control_file_path)
     cf = builder.build()
     sim = cf.getSimulation()
-    log.info('   - Listing reports...')
+    log.info('  - Listing reports...')
     list_of_reports = []
     for epoch in sim:
         for report in epoch:
             list_of_reports.append(report)
 
-    log.info('   - Retrieving data using {} '.format(number_of_processors) +
+    log.info('  - Retrieving data using {} '.format(number_of_processors) +
           'processors...')
-    parallel_function = partial(_parallel_atom_getter, water_simulation_ids)
+    parallel_function = partial(_parallel_atom_getter, water_simulation_ids, \
+         magnitude_to_filter)
     with Pool(number_of_processors) as pool:
         atom_data = pool.map(parallel_function, list_of_reports)
 
     fixed_atom_data = []
 
-    log.info('   - Linking report pointers...')
+    log.info('  - Linking report pointers...')
     for (path, name), atom_coords in atom_data:
         for report in list_of_reports:
             if ((report.path, report.name) == (path, name)):
@@ -381,12 +425,13 @@ def obtain_water_data_from(control_file_path, number_of_processors,
             raise NameError("Report {}{} not found".format(path, name))
         fixed_atom_data.append((report_pointer_to_add, atom_coords))
 
-    log.info('   - Parsing data...')
+    log.info('  - Parsing data...')
     return split_atom_data(fixed_atom_data), list_of_reports
 
 
 def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
-                      atom_steps, first_steps_to_ignore):
+                      atom_steps, atom_energies, first_steps_to_ignore, 
+                      percentage_threshold, magnitude_to_filter):
     """It filters structures that were previously retrieved from a PELE
     simulation.
 
@@ -402,8 +447,14 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
                  list of ordered atom steps.
     atom_coords : list
                   list of ordered atom coordinates.
+    atom_energies : list
+                  list of ordered atom energies.
     first_steps_to_ignore : int
                             number of first steps that will be filtered out.
+    percentage_threshold : float
+                        filtering criterium: percentage of data to be considered
+    magnitude_to_filter : int
+                            column from which we want to filter data
 
     RETURNS
     -------
@@ -417,20 +468,81 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
                    filtered list of ordered atom steps.
     f_atom_coords : list
                     filtered list of ordered atom coordinates.
+    f_atom_energies : list
+                    filtered list of ordered atom energies.
     """
+
+    def threshold_energy_getter(atom_energies, percentage_threshold, \
+        magnitude_to_filter):
+        """Calculates the maximum value we want to consider to calculate
+        the centroids.
+
+        PARAMETERS
+        ----------
+        atom_energies : list
+                      list of ordered atom energies.
+        percentage_threshold : float
+                        filtering criterium: percentage of data to be considered
+        magnitude_to_filter : int
+                            column from which we want to filter data
+
+        RETURNS
+        -------
+        max_ene_percentile : float
+                                filtered value's maximum value to be considered
+                                to calculate centroids.
+        """        
+
+        log = Logger()
+
+        atom_energies.sort()
+
+        if percentage_threshold is not None:
+
+            number_config = len(atom_energies) 
+            num_percentile = trunc((percentage_threshold/100.)*number_config)
+            atom_ene_percentile = atom_energies[0:num_percentile]
+            max_ene_percentile = atom_ene_percentile[-1]         
+
+            ene_percentage = \
+                (atom_ene_percentile[-1]-atom_ene_percentile[0])/(atom_energies[-1]-atom_energies[0])
+
+            if magnitude_to_filter == 5:
+                log.info('  - Filtering by Binding Energy',)
+            else: 
+                log.info('  - Filtering by sasaLig.',)
+            log.info('    - Percentage of data considered:', \
+                '{:.1f}'.format(float(100.*num_percentile/number_config)),'%')
+            log.info('    - Percentage of filtered magnitude covered:', \
+                '{:.3f}'.format(100.*float(ene_percentage)),'%')
+
+        else: 
+
+            max_ene_percentile = atom_energies[-1]
+
+        return max_ene_percentile
+
     # Remove coordinates from first steps
     f_atom_reports = []
     f_atom_ids = []
     f_atom_models = []
     f_atom_coords = []
     f_atom_steps = []
+    f_atom_energies = []
 
-    for report, atom, model, coords, step in zip(atom_reports,
-                                                 atom_ids,
-                                                 atom_models,
-                                                 atom_coords,
-                                                 atom_steps):
+    energy_thresh = threshold_energy_getter(atom_energies, \
+        percentage_threshold, magnitude_to_filter)
+
+    for report, atom, model, coords, step, energy in zip(atom_reports,
+                                                    atom_ids,
+                                                    atom_models,
+                                                    atom_coords,
+                                                    atom_steps,
+                                                    atom_energies): 
         if (step < first_steps_to_ignore):
+            continue
+
+        if (energy > energy_thresh):
             continue
 
         f_atom_reports.append(report)
@@ -438,9 +550,10 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
         f_atom_models.append(model)
         f_atom_coords.append(coords)
         f_atom_steps.append(step)
+        f_atom_energies.append(energy)
 
     return f_atom_reports, f_atom_ids, f_atom_models, f_atom_coords, \
-        f_atom_steps
+        f_atom_steps,f_atom_energies
 
 
 def clusterization(cluster_radius, number_of_processors, atom_coords):
@@ -605,7 +718,6 @@ def write_centroids(estimator, densities, centroids_output_path,
 
     # Get centroids and number of clusters
     centroids = estimator.cluster_centers_
-    n_clusters = len(centroids)
 
     # Select writer function
     writer = single_write
@@ -623,7 +735,6 @@ def write_centroids(estimator, densities, centroids_output_path,
                 norm_densities.append(density * normalization_factor)
 
     # Write centroids to PDB
-    n_clusters = len(centroids)
     with open(centroids_output_path, 'w') as f:
         for i, centroid in enumerate(centroids):
             writer(f, i + 1, centroid, norm_densities[i])
@@ -748,8 +859,8 @@ def main():
 
     # Parse command-line arguments
     control_file_path, number_of_processors, water_ids, ref_coords, \
-        first_steps_to_ignore, cluster_radius, centroids_output_path, \
-        normalize_densities, debug = parseArgs()
+        first_steps_to_ignore, percentage_threshold, magnitude_to_filter, \
+        cluster_radius, centroids_output_path, normalize_densities, debug = parseArgs()
 
     # Set up logger
     log = Logger()
@@ -773,20 +884,23 @@ def main():
 
     log.info(' - Retrieving water data from reports')
     # Get water data from reports
-    (atom_reports, atom_ids, atom_models, atom_coords, atom_steps), \
+    (atom_reports, atom_ids, atom_models, atom_coords, atom_steps, atom_energies), \
         list_of_reports = obtain_water_data_from(control_file_path,
                                                  number_of_processors,
-                                                 water_ids)
+                                                 water_ids, magnitude_to_filter)
 
     log.info(' - Filtering structures')
     # Filter structures
-    atom_reports, atom_ids, atom_models, atom_coords, atom_steps = \
+    atom_reports, atom_ids, atom_models, atom_coords, atom_steps, atom_energies = \
         filter_structures(atom_reports,
                           atom_ids,
                           atom_models,
                           atom_coords,
                           atom_steps,
-                          first_steps_to_ignore)
+                          atom_energies,
+                          first_steps_to_ignore,
+                          percentage_threshold,
+                          magnitude_to_filter)
 
     log.info(' - Clustering using {} processors'.format(number_of_processors))
     estimator, results = clusterization(cluster_radius,
