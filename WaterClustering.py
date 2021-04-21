@@ -508,7 +508,6 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
 
             number_config = len(atom_energies) 
             num_percentile = trunc((percentage_threshold/100)*number_config)
-            print(num_percentile)
             atom_ene_percentile = atom_energies[0:num_percentile]
             max_ene_percentile = atom_ene_percentile[-1]         
 
@@ -939,6 +938,7 @@ def main():
                                                     ref_coords),
                                   first_steps_to_ignore)
 
+    log.info(' ')
 
 if __name__ == "__main__":
     """Call the main function"""
