@@ -497,6 +497,11 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
 
         atom_energies.sort()
 
+        if len(atom_energies) == 0:
+            raise Exception('No filtering data has been read from files.' \
+                + ' Check result\'s path in control file and files in that folder.')
+
+
         if percentage_threshold is not None:
 
             number_config = len(atom_energies) 
