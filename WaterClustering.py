@@ -118,17 +118,15 @@ def parseArgs():
         PARAMETERS
         ----------
         percentage : float
-               percentile threshold.
+               percentile threshold (percentage).
         column : int
                 column from which to retrieve data.
         """
 
-        if type(percentage) is int:
-            if (percentage > 100) or (percentage <= 0):
+        if type(percentage) is float:
+            if (percentage > 100.) or (percentage <= 0.):
                 raise Exception('The percentage of filtering is out of'
                 + ' bounds (0, 100].')
-        elif type(percentage) is float:
-            percentage = round(percentage)
         else:
             raise Exception('The percentage type (',type(percentage),')'
             + ' must be float (0, 100].')
@@ -166,8 +164,8 @@ def parseArgs():
     optional.add_argument("-f", "--first_steps_to_ignore", metavar="INT",
                           type=int, help="Number of first steps that will " +
                           "be filtered out. Default is 1.", default=1)
-    optional.add_argument("-p", "--percentage_threshold", metavar="INT",
-                          type=int, help="Percentile threshold " +
+    optional.add_argument("-p", "--percentage_threshold", metavar="FLOAT",
+                          type=float, help="Percentile threshold " +
                           "to filter models out.", default=None)
     optional.add_argument("-m", "--magnitude_to_filter", metavar="INT",
                           type=int, help="Column of the report " +
@@ -347,7 +345,9 @@ def obtain_water_data_from(control_file_path, number_of_processors,
                            each sublist contains the chain id, the residue
                            number and the PDB atom name that defines the
                            main atom of a water link
-
+    magnitude_to_filter : int
+                            column of the report from which the data will be 
+                            filtered.
     RETURNS
     -------
     fixed_atom_data : list
@@ -378,6 +378,8 @@ def obtain_water_data_from(control_file_path, number_of_processors,
                      list of ordered atom steps.
         atom_coords : list
                       list of ordered atom coordinates.
+        atom_energies : list
+                        list of ordered atom energies.
         """
         atom_reports = []
         atom_ids = []
@@ -453,10 +455,10 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
                   list of ordered atom energies.
     first_steps_to_ignore : int
                             number of first steps that will be filtered out.
-    percentage_threshold : int
-                        filtering criterium: percentage of data to be considered
+    percentage_threshold : float
+                        filtering criterium: percentage of data consider.
     magnitude_to_filter : int
-                            column from which we want to filter data
+                            column from which we want to filter data.
 
     RETURNS
     -------
@@ -483,7 +485,7 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
         ----------
         atom_energies : list
                       list of ordered atom energies.
-        percentage_threshold : int
+        percentage_threshold : float
                         filtering criterium: percentage of data to be considered
         magnitude_to_filter : int
                             column from which we want to filter data
