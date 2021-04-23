@@ -123,17 +123,12 @@ def parseArgs():
                 column from which to retrieve data.
         """
 
+        log = Logger()
+
         if type(percentage) is float:
             if (percentage > 100.) or (percentage <= 0.):
                 raise Exception('The percentage of filtering is out of'
                 + ' bounds (0, 100].')
-        else:
-            raise Exception('The percentage type (',type(percentage),')'
-            + ' must be float (0, 100].')
-
-        if column not in [5, 6]:
-            raise Exception('The column must be either 5 or 6 (Binding Energy'
-            + ' or sasaLig respectively).')
 
     parser = ap.ArgumentParser()
     optional = parser._action_groups.pop()
@@ -169,8 +164,8 @@ def parseArgs():
                           "to filter models out.", default=None)
     optional.add_argument("-m", "--magnitude_to_filter", metavar="INT",
                           type=int, help="Column of the report " +
-                          "to filter models out, either 5 or 6 (Binding Energy" + 
-                          "or sasa respectively).", default=None)
+                          "to filter models out (Binding Energy," + 
+                          " sasa, etc).", default=5)
     optional.add_argument("-R", "--cluster_radius", metavar="FLOAT",
                           type=float, default=2, help="Clusters width in " +
                           "angstroms. Default is 2.")
