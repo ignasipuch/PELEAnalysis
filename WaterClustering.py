@@ -170,7 +170,7 @@ def parseArgs():
     optional.add_argument("-m", "--magnitude_to_filter", metavar="INT",
                           type=int, help="Column of the report " +
                           "to filter models out, either 5 or 6 (Binding Energy" + 
-                          "or sasa respectively).", default=5)
+                          "or sasa respectively).", default=None)
     optional.add_argument("-R", "--cluster_radius", metavar="FLOAT",
                           type=float, default=2, help="Clusters width in " +
                           "angstroms. Default is 2.")
@@ -489,12 +489,10 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
             + ' Check result\'s path in control file and files in that folder.')
 
     if percentage_threshold is not None:
-
         energy_thresh = percentile(atom_energies, \
             percentage_threshold)
 
     else: 
-
         energy_thresh = percentile(atom_energies, \
             100.)
 
