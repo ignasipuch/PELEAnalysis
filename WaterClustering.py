@@ -11,7 +11,7 @@ from sklearn import cluster
 from collections import defaultdict
 from copy import copy
 from pathlib import Path
-from math import trunc
+from numpy import percentile
 
 from PELETools import ControlFileParser
 from PELETools.Utils import Logger
@@ -476,61 +476,6 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
                     filtered list of ordered atom energies.
     """
 
-    def threshold_energy_getter(atom_energies, percentage_threshold, \
-        magnitude_to_filter):
-        """Calculates the maximum value we want to consider to calculate
-        the centroids.
-
-        PARAMETERS
-        ----------
-        atom_energies : list
-                      list of ordered atom energies.
-        percentage_threshold : float
-                        filtering criterium: percentage of data to be considered
-        magnitude_to_filter : int
-                            column from which we want to filter data
-
-        RETURNS
-        -------
-        max_ene_percentile : float
-                                filtered value's maximum value to be considered
-                                to calculate centroids.
-        """        
-
-        log = Logger()
-
-        atom_energies.sort()
-
-        if len(atom_energies) == 0:
-            raise Exception('No filtering data has been read from files.' \
-                + ' Check result\'s path in control file and files in that folder.')
-
-
-        if percentage_threshold is not None:
-
-            number_config = len(atom_energies) 
-            num_percentile = trunc((percentage_threshold/100)*number_config)
-            atom_ene_percentile = atom_energies[0:num_percentile]
-            max_ene_percentile = atom_ene_percentile[-1]         
-
-            ene_percentage = \
-                (atom_ene_percentile[-1]-atom_ene_percentile[0])/(atom_energies[-1]-atom_energies[0])
-
-            if magnitude_to_filter == 5:
-                log.info('  - Filtering by Binding Energy',)
-            else: 
-                log.info('  - Filtering by sasaLig.',)
-            log.info('    - Percentage of data considered:', \
-                '{:.3f}'.format(float(100.*num_percentile/number_config)),'%')
-            log.info('    - Percentage of filtered magnitude covered:', \
-                '{:.3f}'.format(100.*float(ene_percentage)),'%')
-
-        else: 
-
-            max_ene_percentile = atom_energies[-1]
-
-        return max_ene_percentile
-
     # Remove coordinates from first steps
     f_atom_reports = []
     f_atom_ids = []
@@ -539,8 +484,20 @@ def filter_structures(atom_reports, atom_ids, atom_models, atom_coords,
     f_atom_steps = []
     f_atom_energies = []
 
-    energy_thresh = threshold_energy_getter(atom_energies, \
-        percentage_threshold, magnitude_to_filter)
+    if len(atom_energies) == 0:
+        raise Exception('No filtering data has been read from files.' \
+            + ' Check result\'s path in control file and files in that folder.')
+
+    if percentage_threshold is not None:
+
+        energy_thresh = percentile(atom_energies, \
+            percentage_threshold)
+
+    else: 
+
+        energy_thresh = percentile(atom_energies, \
+            100.)
+
 
     for report, atom, model, coords, step, energy in zip(atom_reports,
                                                     atom_ids,
